@@ -1,32 +1,17 @@
 data "confluent_organization" "dapper_labs" {}
 
+# Cloud Environment
 data "confluent_environment" "dapper-sandbox" {
   id = "env-99mr0"
 }
 
-resource "confluent_kafka_cluster" "basic" {
-  display_name = "${var.tag_name}_kafka_cluster"
-  availability = "SINGLE_ZONE"
-  cloud        = "GCP"
-  region       = "us-central1"
-  basic {}
-
-  environment {
-    id = data.confluent_environment.dapper-sandbox.id
-  }
-}
-
+# Service Account
 resource "confluent_service_account" "test-app-sa" {
   display_name = "${var.tag_name}-app-sa"
   description  = "Service Account for test app"
 }
 
-resource "confluent_role_binding" "test-app-manager-kafka-cluster-admin" {
-  principal   = "User:${confluent_service_account.test-app-sa.id}"
-  role_name   = "CloudClusterAdmin"
-  crn_pattern = confluent_kafka_cluster.basic.rbac_crn
-}
-
+# API Key
 resource "confluent_api_key" "app-manager-kafka-api-key" {
   display_name = "${var.tag_name}-app-manager-kafka-api-key"
   description  = "Kafka API Key that is owned by 'app-manager' service account"
@@ -58,7 +43,7 @@ resource "confluent_api_key" "app-manager-kafka-api-key" {
   ]
 }
 
-
+# Access Control Lists
 resource "confluent_kafka_acl" "describe-basic-cluster" {
   kafka_cluster {
     id = confluent_kafka_cluster.basic.id
@@ -77,6 +62,27 @@ resource "confluent_kafka_acl" "describe-basic-cluster" {
   }
 }
 
+# Role Binding
+resource "confluent_role_binding" "test-app-manager-kafka-cluster-admin" {
+  principal   = "User:${confluent_service_account.test-app-sa.id}"
+  role_name   = "CloudClusterAdmin"
+  crn_pattern = confluent_kafka_cluster.basic.rbac_crn
+}
+
+# Cluster
+resource "confluent_kafka_cluster" "basic" {
+  display_name = "${var.tag_name}_kafka_cluster"
+  availability = "SINGLE_ZONE"
+  cloud        = "GCP"
+  region       = "us-central1"
+  basic {}
+
+  environment {
+    id = data.confluent_environment.dapper-sandbox.id
+  }
+}
+
+# Topic
 resource "confluent_kafka_topic" "orders" {
   kafka_cluster {
     id = confluent_kafka_cluster.basic.id
