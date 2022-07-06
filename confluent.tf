@@ -1,102 +1,51 @@
-data "confluent_organization" "dapper_labs" {}
-
-# Cloud Environment
-data "confluent_environment" "dapper-sandbox" {
-  id = "env-99mr0"
-}
-
-# Service Account
-resource "confluent_service_account" "test-app-sa" {
-  display_name = "${var.tag_name}-app-sa"
-  description  = "Service Account for test app"
-}
-
-# API Key
-resource "confluent_api_key" "app-manager-kafka-api-key" {
-  display_name = "${var.tag_name}-app-manager-kafka-api-key"
-  description  = "Kafka API Key that is owned by 'app-manager' service account"
-  owner {
-    id          = confluent_service_account.test-app-sa.id
-    api_version = confluent_service_account.test-app-sa.api_version
-    kind        = confluent_service_account.test-app-sa.kind
-  }
-
-  managed_resource {
-    id          = confluent_kafka_cluster.basic.id
-    api_version = confluent_kafka_cluster.basic.api_version
-    kind        = confluent_kafka_cluster.basic.kind
-
-    environment {
-      id = data.confluent_environment.dapper-sandbox.id
+locals {
+  cluster_readers = ["reader"]
+  cluster_writers = ["writer"]
+  default_topic_config = {
+    partitions = 12
+    # Replication factor is required but cannot be changed
+    replication_factor = 3
+    config = {
+      "cleanup.policy" = "delete"
     }
-  }
-
-  # The goal is to ensure that confluent_role_binding.app-manager-kafka-cluster-admin is created before
-  # confluent_api_key.app-manager-kafka-api-key is used to create instances of
-  # confluent_kafka_topic, confluent_kafka_acl resources.
-
-  # 'depends_on' meta-argument is specified in confluent_api_key.app-manager-kafka-api-key to avoid having
-  # multiple copies of this definition in the configuration which would happen if we specify it in
-  # confluent_kafka_topic, confluent_kafka_acl resources instead.
-  depends_on = [
-    confluent_role_binding.test-app-manager-kafka-cluster-admin
-  ]
-}
-
-# Access Control Lists
-resource "confluent_kafka_acl" "describe-basic-cluster" {
-  kafka_cluster {
-    id = confluent_kafka_cluster.basic.id
-  }
-  resource_type = "CLUSTER"
-  resource_name = "${var.tag_name}-kafka-cluster"
-  pattern_type  = "LITERAL"
-  principal     = "User:${confluent_service_account.test-app-sa.id}"
-  host          = "*"
-  operation     = "DESCRIBE"
-  permission    = "ALLOW"
-  rest_endpoint = confluent_kafka_cluster.basic.rest_endpoint
-  credentials {
-    key    = confluent_api_key.app-manager-kafka-api-key.id
-    secret = confluent_api_key.app-manager-kafka-api-key.secret
+    acl_readers = local.cluster_readers
+    acl_writers = local.cluster_writers
   }
 }
 
-# Role Binding
-resource "confluent_role_binding" "test-app-manager-kafka-cluster-admin" {
-  principal   = "User:${confluent_service_account.test-app-sa.id}"
-  role_name   = "CloudClusterAdmin"
-  crn_pattern = confluent_kafka_cluster.basic.rbac_crn
-}
-
-# Cluster
-resource "confluent_kafka_cluster" "basic" {
-  display_name = "${var.tag_name}_kafka_cluster"
-  availability = "SINGLE_ZONE"
-  cloud        = "GCP"
-  region       = "us-central1"
-  basic {}
-
-  environment {
-    id = data.confluent_environment.dapper-sandbox.id
-  }
-}
-
-# Topic
-resource "confluent_kafka_topic" "orders" {
-  kafka_cluster {
-    id = confluent_kafka_cluster.basic.id
-  }
-  topic_name       = "orders"
-  partitions_count = 4
-  rest_endpoint    = confluent_kafka_cluster.basic.rest_endpoint
-  config = {
-    "cleanup.policy"    = "compact"
-    "max.message.bytes" = "12345"
-    "retention.ms"      = "67890"
-  }
-  credentials {
-    key    = confluent_api_key.app-manager-kafka-api-key.id
-    secret = confluent_api_key.app-manager-kafka-api-key.secret
+module "demo_kafka" {
+  source                  = "./confluent"
+  environment             = "DEMO"
+  gcp_region              = var.default_region
+  name                    = "cruise"
+  cku                     = 2
+  availability            = "MULTI_ZONE"
+  enable_metric_exporters = true
+  topics = {
+    "demo.wh.distribution-minted"              = local.default_topic_config,
+    "demo.wh.distribution-updated"             = local.default_topic_config,
+    "demo.wh.edition-minted"                   = local.default_topic_config,
+    "demo.wh.edition-closed"                   = local.default_topic_config,
+    "demo.wh.listing-available"                = local.default_topic_config,
+    "demo.wh.listing-completed"                = local.default_topic_config,
+    "demo.wh.minted-moment-nft"                = local.default_topic_config, //TODO: Remove this once updated
+    "demo.wh.moment-nft-burned"                = local.default_topic_config,
+    "demo.wh.moment-nft-minted"                = local.default_topic_config,
+    "demo.wh.moment-nft-deposited"             = local.default_topic_config,
+    "demo.wh.moment-nft-withdrawn"             = local.default_topic_config,
+    "demo.wh.pack-nft-deposited"               = local.default_topic_config,
+    "demo.wh.pack-nft-minted"                  = local.default_topic_config,
+    "demo.wh.pack-nft-opened"                  = local.default_topic_config,
+    "demo.wh.pack-nft-revealed"                = local.default_topic_config,
+    "demo.wh.play-minted"                      = local.default_topic_config,
+    "demo.wh.series-closed"                    = local.default_topic_config,
+    "demo.wh.series-minted"                    = local.default_topic_config,
+    "demo.wh.set-minted"                       = local.default_topic_config,
+    "demo.wh.team-nft-deposited"               = local.default_topic_config,
+    "demo.wh.team-nft-minted"                  = local.default_topic_config,
+    "demo.wh.team-nft-series-created"          = local.default_topic_config,
+    "demo.wh.team-nft-set-created"             = local.default_topic_config,
+    "demo.wh.team-nft-series-metadata-updated" = local.default_topic_config,
+    "demo.wh.team-nft-set-metadata-updated"    = local.default_topic_config,
   }
 }

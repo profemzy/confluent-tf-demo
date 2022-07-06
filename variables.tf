@@ -10,3 +10,8 @@ variable "tag_name" {
   type    = string
   default = "test"
 }
+
+variable "default_region" {
+  type    = string
+  default = "us-west1"
+}
